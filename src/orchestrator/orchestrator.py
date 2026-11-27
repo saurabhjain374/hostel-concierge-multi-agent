@@ -12,6 +12,16 @@ from src.approval import ApprovalManager
 
 class HostelOrchestrator:
 
+    MENU_ITEMS = {
+        "veg sandwich": "M001",
+        "paneer wrap": "M002",
+        "peanut butter toast": "M003",
+        "masala dosa": "M004",
+        "veg burger": "M005",
+        "fruit bowl": "M006",
+        "coffee": "M007"
+    }
+
     def __init__(
         self,
         guest_id: str,
@@ -41,6 +51,13 @@ class HostelOrchestrator:
 
         return str(getattr(message, "content", ""))
 
+    def _is_user_message(self, message) -> bool:
+
+        if isinstance(message, dict):
+            return message.get("role") in ("user", "human")
+
+        return getattr(message, "type", None) == "human"
+
     def _contains_keyword(self, text: str, keyword: str) -> bool:
 
         pattern = (
@@ -49,12 +66,51 @@ class HostelOrchestrator:
             + r"(?!\w)"
         )
 
-        return re.search(pattern, text, flags=re.IGNORECASE) is not None
+        return re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE
+        ) is not None
 
     def _reset_counter(self, counter):
 
         if counter is not None:
             counter.reset()
+
+    def _resolve_food_item_from_history(
+        self,
+        messages: list,
+        current_message: str
+    ) -> tuple[str | None, str | None]:
+
+        # First check whether the current message explicitly
+        # mentions a menu item.
+        current_text = current_message.lower()
+
+        for item_name, item_id in self.MENU_ITEMS.items():
+
+            if self._contains_keyword(current_text, item_name):
+                return item_id, item_name
+
+        # If the current message does not mention an item,
+        # inspect previous USER messages only.
+        #
+        # Assistant responses may contain the entire menu.
+        # Using them could incorrectly infer an unrelated item.
+
+        for message in reversed(messages):
+
+            if not self._is_user_message(message):
+                continue
+
+            content = self._get_message_content(message).lower()
+
+            for item_name, item_id in self.MENU_ITEMS.items():
+
+                if self._contains_keyword(content, item_name):
+                    return item_id, item_name
+
+        return None, None
 
     def _extract_tool_results(
         self,
@@ -457,8 +513,6 @@ class HostelOrchestrator:
 
             try:
 
-                # Reset Booking Specialist tool-call counter
-                # for this new invocation.
                 self._reset_counter(self.booking_counter)
 
                 booking_result = await self.booking_agent.ainvoke(
@@ -584,16 +638,6 @@ class HostelOrchestrator:
 
         if kitchen_request:
 
-            menu_items = {
-                "veg sandwich": "M001",
-                "paneer wrap": "M002",
-                "peanut butter toast": "M003",
-                "masala dosa": "M004",
-                "veg burger": "M005",
-                "fruit bowl": "M006",
-                "coffee": "M007"
-            }
-
             order_phrases = [
                 "order",
                 "i want to have",
@@ -614,13 +658,14 @@ class HostelOrchestrator:
 
             if food_order_request:
 
-                for item_name, item_id in menu_items.items():
-
-                    if self._contains_keyword(text, item_name):
-
-                        selected_item_id = item_id
-                        selected_item_name = item_name
-                        break
+                # Resolve the food item from the current message
+                # or from previous user messages in the conversation.
+                selected_item_id, selected_item_name = (
+                    self._resolve_food_item_from_history(
+                        messages[:-1],
+                        guest_message
+                    )
+                )
 
                 if selected_item_id is None:
 
@@ -666,8 +711,6 @@ class HostelOrchestrator:
 
             try:
 
-                # Reset Kitchen Specialist tool-call counter
-                # for this new invocation.
                 self._reset_counter(self.kitchen_counter)
 
                 kitchen_result = await self.kitchen_agent.ainvoke(

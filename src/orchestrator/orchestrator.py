@@ -1,9 +1,11 @@
 
 import ast
 import json
+from pyexpat.errors import messages
+from langchain_core import messages
 
 from langchain_core.messages import AIMessage, ToolMessage
-
+from langgraph.errors import GraphRecursionError
 from src.agents.specialists import create_specialist_agents
 from src.approval import ApprovalManager
 
@@ -443,14 +445,31 @@ class HostelOrchestrator:
                     f"Guest request: {guest_message}"
                 )
 
-            booking_result = await self.booking_agent.ainvoke({
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": booking_instruction
-                    }
-                ]
-            })
+            try:
+                booking_result = await self.booking_agent.ainvoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": booking_instruction
+                }
+            ]
+        },
+        config={"recursion_limit": 12}
+    )
+
+            except GraphRecursionError:
+                response = (
+                    "I couldn't complete your booking request because the "
+                    "specialist reached its execution limit. "
+                    "Please try again with a simpler request."
+                )
+
+                return {
+                    "messages": messages + [
+                        AIMessage(content=response)
+                    ]
+                }
 
             if checkout_action:
 
@@ -630,14 +649,31 @@ class HostelOrchestrator:
                     f"Guest request: {guest_message}"
                 )
 
-            kitchen_result = await self.kitchen_agent.ainvoke({
+            try:
+                        kitchen_result = await self.kitchen_agent.ainvoke(
+            {
                 "messages": [
                     {
                         "role": "user",
                         "content": kitchen_instruction
                     }
                 ]
-            })
+            },
+            config={"recursion_limit": 12}
+        )
+
+            except GraphRecursionError:
+                response = (
+                    "I couldn't complete your kitchen request because the "
+                    "specialist reached its execution limit. "
+                    "Please try again with a simpler request."
+                )
+
+                return {
+                    "messages": messages + [
+                        AIMessage(content=response)
+                    ]
+                }
 
            
             if food_order_request:

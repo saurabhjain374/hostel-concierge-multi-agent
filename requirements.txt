@@ -1,0 +1,8 @@
+
+mcp
+langgraph
+langchain-ollama
+langchain-mcp-adapters
+pydantic
+pytest
+tzdata

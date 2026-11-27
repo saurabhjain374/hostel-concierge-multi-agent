@@ -1,0 +1,53 @@
+﻿{
+  "menu": [
+    {
+      "item_id": "M001",
+      "name": "Veg Sandwich",
+      "price": 120,
+      "available": true,
+      "allergens": []
+    },
+    {
+      "item_id": "M002",
+      "name": "Paneer Wrap",
+      "price": 180,
+      "available": true,
+      "allergens": []
+    },
+    {
+      "item_id": "M003",
+      "name": "Peanut Butter Toast",
+      "price": 100,
+      "available": true,
+      "allergens": ["peanuts"]
+    },
+    {
+      "item_id": "M004",
+      "name": "Masala Dosa",
+      "price": 150,
+      "available": true,
+      "allergens": []
+    },
+    {
+      "item_id": "M005",
+      "name": "Veg Burger",
+      "price": 160,
+      "available": false,
+      "allergens": []
+    },
+    {
+      "item_id": "M006",
+      "name": "Fruit Bowl",
+      "price": 90,
+      "available": true,
+      "allergens": []
+    },
+    {
+      "item_id": "M007",
+      "name": "Coffee",
+      "price": 60,
+      "available": true,
+      "allergens": []
+    }
+  ]
+}

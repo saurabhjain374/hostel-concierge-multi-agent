@@ -1,0 +1,59 @@
+﻿{
+  "guests": [
+    {
+      "guest_id": "G001",
+      "name": "Rahul",
+      "room_number": "101",
+      "booking": {
+        "booking_id": "B001",
+        "check_in": "2026-11-24",
+        "check_out": "2026-11-27",
+        "status": "checked_in"
+      }
+    },
+    {
+      "guest_id": "G002",
+      "name": "Priya",
+      "room_number": "102",
+      "booking": {
+        "booking_id": "B002",
+        "check_in": "2026-11-25",
+        "check_out": "2026-11-28",
+        "status": "checked_in"
+      }
+    },
+    {
+      "guest_id": "G003",
+      "name": "Amit",
+      "room_number": "103",
+      "booking": {
+        "booking_id": "B003",
+        "check_in": "2026-11-20",
+        "check_out": "2026-11-23",
+        "status": "checked_out"
+      }
+    },
+    {
+      "guest_id": "G004",
+      "name": "Neha",
+      "room_number": "104",
+      "booking": {
+        "booking_id": "B004",
+        "check_in": "2026-11-26",
+        "check_out": "2026-11-29",
+        "status": "not_arrived"
+      }
+    },
+    {
+      "guest_id": "G005",
+      "name": "Vikram",
+      "room_number": "105",
+      "booking": {
+        "booking_id": "B005",
+        "check_in": "2026-11-25",
+        "check_out": "2026-11-30",
+        "status": "checked_in"
+      }
+    }
+  ]
+}

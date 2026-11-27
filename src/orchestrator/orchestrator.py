@@ -16,11 +16,16 @@ class HostelOrchestrator:
         self,
         guest_id: str,
         booking_agent,
-        kitchen_agent
+        kitchen_agent,
+        booking_counter=None,
+        kitchen_counter=None
     ):
         self.guest_id = guest_id
         self.booking_agent = booking_agent
         self.kitchen_agent = kitchen_agent
+
+        self.booking_counter = booking_counter
+        self.kitchen_counter = kitchen_counter
 
         self.approval_manager = ApprovalManager()
         self.pending_approval_request_id = None
@@ -37,13 +42,6 @@ class HostelOrchestrator:
         return str(getattr(message, "content", ""))
 
     def _contains_keyword(self, text: str, keyword: str) -> bool:
-        """
-        Match complete words or phrases instead of substrings.
-
-        For example:
-        - 'eat' matches 'I want to eat'
-        - 'eat' does NOT match 'weather'
-        """
 
         pattern = (
             r"(?<!\w)"
@@ -52,6 +50,11 @@ class HostelOrchestrator:
         )
 
         return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
+    def _reset_counter(self, counter):
+
+        if counter is not None:
+            counter.reset()
 
     def _extract_tool_results(
         self,
@@ -245,7 +248,6 @@ class HostelOrchestrator:
                 "Please submit your request again."
             )
 
-        # Enforce guest ownership.
         if request.get("guest_id") != self.guest_id:
             return "You are not authorized to approve this request."
 
@@ -379,7 +381,6 @@ class HostelOrchestrator:
             "peanut"
         ]
 
-        # Match complete words/phrases, not arbitrary substrings.
         booking_request = any(
             self._contains_keyword(text, keyword)
             for keyword in booking_keywords
@@ -455,6 +456,10 @@ class HostelOrchestrator:
                 )
 
             try:
+
+                # Reset Booking Specialist tool-call counter
+                # for this new invocation.
+                self._reset_counter(self.booking_counter)
 
                 booking_result = await self.booking_agent.ainvoke(
                     {
@@ -661,6 +666,10 @@ class HostelOrchestrator:
 
             try:
 
+                # Reset Kitchen Specialist tool-call counter
+                # for this new invocation.
+                self._reset_counter(self.kitchen_counter)
+
                 kitchen_result = await self.kitchen_agent.ainvoke(
                     {
                         "messages": [
@@ -810,12 +819,17 @@ class HostelOrchestrator:
 
 async def create_hostel_orchestrator(guest_id: str):
 
-    booking_agent, kitchen_agent = await create_specialist_agents(
-        guest_id
-    )
+    (
+        booking_agent,
+        kitchen_agent,
+        booking_counter,
+        kitchen_counter
+    ) = await create_specialist_agents(guest_id)
 
     return HostelOrchestrator(
         guest_id=guest_id,
         booking_agent=booking_agent,
-        kitchen_agent=kitchen_agent
+        kitchen_agent=kitchen_agent,
+        booking_counter=booking_counter,
+        kitchen_counter=kitchen_counter
     )

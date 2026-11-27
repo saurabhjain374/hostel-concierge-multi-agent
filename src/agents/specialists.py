@@ -8,6 +8,24 @@ from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
+class ToolCallCounter:
+    """Track and limit MCP tool executions for one specialist invocation."""
+
+    def __init__(self, limit: int = 4):
+        self.limit = limit
+        self.calls = 0
+
+    def reset(self):
+        self.calls = 0
+
+    def allow_call(self) -> bool:
+        if self.calls >= self.limit:
+            return False
+
+        self.calls += 1
+        return True
+
+
 def create_specialist_toolsets(
     guest_id: str,
     tool_map: dict
@@ -17,10 +35,14 @@ def create_specialist_toolsets(
 
     Each specialist receives only its permitted tools.
     Guest identity is supplied by the application.
+    Each specialist has an independent MCP tool-call limit.
     """
 
     if not guest_id:
         raise ValueError("Guest ID is required.")
+
+    booking_counter = ToolCallCounter(limit=4)
+    kitchen_counter = ToolCallCounter(limit=4)
 
     # -------------------------------------------------
     # 1. Booking Specialist secure wrappers
@@ -29,6 +51,13 @@ def create_specialist_toolsets(
     @tool
     async def get_my_booking() -> str:
         """Retrieve the authenticated guest's booking details."""
+
+        if not booking_counter.allow_call():
+            return (
+                "TOOL CALL LIMIT REACHED: "
+                "Booking Specialist can execute a maximum "
+                "of 4 MCP tool calls per request."
+            )
 
         result = await tool_map["get_guest_booking"].ainvoke({
             "guest_id": guest_id
@@ -39,6 +68,13 @@ def create_specialist_toolsets(
     @tool
     async def request_my_checkout() -> str:
         """Request checkout approval for the authenticated guest."""
+
+        if not booking_counter.allow_call():
+            return (
+                "TOOL CALL LIMIT REACHED: "
+                "Booking Specialist can execute a maximum "
+                "of 4 MCP tool calls per request."
+            )
 
         result = await tool_map["request_checkout"].ainvoke({
             "guest_id": guest_id
@@ -59,6 +95,13 @@ def create_specialist_toolsets(
     async def get_kitchen_menu() -> str:
         """Retrieve menu, prices, stock and kitchen status."""
 
+        if not kitchen_counter.allow_call():
+            return (
+                "TOOL CALL LIMIT REACHED: "
+                "Kitchen Specialist can execute a maximum "
+                "of 4 MCP tool calls per request."
+            )
+
         result = await tool_map["get_menu"].ainvoke({})
 
         return str(result)
@@ -69,6 +112,13 @@ def create_specialist_toolsets(
         quantity: int = 1
     ) -> str:
         """Request approval for a food order."""
+
+        if not kitchen_counter.allow_call():
+            return (
+                "TOOL CALL LIMIT REACHED: "
+                "Kitchen Specialist can execute a maximum "
+                "of 4 MCP tool calls per request."
+            )
 
         result = await tool_map["request_food_order"].ainvoke({
             "guest_id": guest_id,
@@ -83,7 +133,12 @@ def create_specialist_toolsets(
         request_my_food_order,
     ]
 
-    return booking_tools, kitchen_tools
+    return (
+        booking_tools,
+        kitchen_tools,
+        booking_counter,
+        kitchen_counter
+    )
 
 
 async def create_specialist_agents(guest_id: str):
@@ -92,6 +147,7 @@ async def create_specialist_agents(guest_id: str):
 
     Guest ID is supplied by the application.
     Each specialist receives only its permitted tools.
+    Each specialist has an independent MCP tool-call limit.
     """
 
     if not guest_id:
@@ -123,7 +179,7 @@ async def create_specialist_agents(guest_id: str):
     }
 
     # -------------------------------------------------
-    # 2. Create separate specialist toolsets
+    # 2. Validate required MCP tools
     # -------------------------------------------------
 
     required_tools = {
@@ -140,7 +196,16 @@ async def create_specialist_agents(guest_id: str):
             f"Required MCP tools are missing: {sorted(missing_tools)}"
         )
 
-    booking_tools, kitchen_tools = create_specialist_toolsets(
+    # -------------------------------------------------
+    # 3. Create separate specialist toolsets
+    # -------------------------------------------------
+
+    (
+        booking_tools,
+        kitchen_tools,
+        booking_counter,
+        kitchen_counter
+    ) = create_specialist_toolsets(
         guest_id,
         tool_map
     )
@@ -154,7 +219,7 @@ async def create_specialist_agents(guest_id: str):
         print(f"- {specialist_tool.name}")
 
     # -------------------------------------------------
-    # 3. LLM configuration
+    # 4. LLM configuration
     # -------------------------------------------------
 
     model = ChatOllama(
@@ -163,7 +228,7 @@ async def create_specialist_agents(guest_id: str):
     )
 
     # -------------------------------------------------
-    # 4. Booking Specialist
+    # 5. Booking Specialist
     # -------------------------------------------------
 
     booking_agent = create_react_agent(
@@ -192,7 +257,7 @@ async def create_specialist_agents(guest_id: str):
     )
 
     # -------------------------------------------------
-    # 5. Kitchen Specialist
+    # 6. Kitchen Specialist
     # -------------------------------------------------
 
     kitchen_agent = create_react_agent(
@@ -235,7 +300,13 @@ async def create_specialist_agents(guest_id: str):
         )
     )
 
+
     print("\nPASS: Booking Specialist created")
     print("PASS: Kitchen Specialist created")
 
-    return booking_agent, kitchen_agent
+    return (
+    booking_agent,
+    kitchen_agent,
+    booking_counter,
+    kitchen_counter
+)

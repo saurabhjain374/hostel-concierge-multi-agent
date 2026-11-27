@@ -1,11 +1,11 @@
 
 import ast
 import json
-from pyexpat.errors import messages
-from langchain_core import messages
+import re
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
+
 from src.agents.specialists import create_specialist_agents
 from src.approval import ApprovalManager
 
@@ -36,8 +36,23 @@ class HostelOrchestrator:
 
         return str(getattr(message, "content", ""))
 
-    
-    
+    def _contains_keyword(self, text: str, keyword: str) -> bool:
+        """
+        Match complete words or phrases instead of substrings.
+
+        For example:
+        - 'eat' matches 'I want to eat'
+        - 'eat' does NOT match 'weather'
+        """
+
+        pattern = (
+            r"(?<!\w)"
+            + re.escape(keyword)
+            + r"(?!\w)"
+        )
+
+        return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
     def _extract_tool_results(
         self,
         agent_result,
@@ -46,9 +61,9 @@ class HostelOrchestrator:
 
         results = []
 
-        messages = agent_result.get("messages", [])
+        agent_messages = agent_result.get("messages", [])
 
-        for message in messages:
+        for message in agent_messages:
 
             if not isinstance(message, ToolMessage):
                 continue
@@ -58,7 +73,6 @@ class HostelOrchestrator:
 
             content = message.content
 
-            # Convert string representations of Python objects.
             if isinstance(content, str):
 
                 try:
@@ -75,7 +89,6 @@ class HostelOrchestrator:
             else:
                 parsed_content = content
 
-            # MCP may return a list containing text dictionaries.
             if isinstance(parsed_content, list):
 
                 for block in parsed_content:
@@ -103,7 +116,6 @@ class HostelOrchestrator:
 
         return results
 
-
     # -------------------------------------------------
     # Booking formatting
     # -------------------------------------------------
@@ -121,13 +133,13 @@ class HostelOrchestrator:
         booking = guest.get("booking", {})
 
         return (
-        "BOOKING INFORMATION:\n\n"
-        f"Guest: {guest.get('name', 'N/A')}\n"
-        f"Room: {guest.get('room_number', 'N/A')}\n"
-        f"Check-in date: {booking.get('check_in', 'N/A')}\n"
-        f"Checkout date: {booking.get('check_out', 'N/A')}\n"
-        f"Booking status: {booking.get('status', 'N/A')}"
-    )
+            "BOOKING INFORMATION:\n\n"
+            f"Guest: {guest.get('name', 'N/A')}\n"
+            f"Room: {guest.get('room_number', 'N/A')}\n"
+            f"Check-in date: {booking.get('check_in', 'N/A')}\n"
+            f"Checkout date: {booking.get('check_out', 'N/A')}\n"
+            f"Booking status: {booking.get('status', 'N/A')}"
+        )
 
     # -------------------------------------------------
     # Kitchen formatting
@@ -235,14 +247,11 @@ class HostelOrchestrator:
 
         # Enforce guest ownership.
         if request.get("guest_id") != self.guest_id:
-
-            return (
-                "You are not authorized to approve this request."
-            )
+            return "You are not authorized to approve this request."
 
         approved = text in approved_words
 
-        result = self.approval_manager.decide(
+        self.approval_manager.decide(
             request_id=request_id,
             approved=approved,
             guest_id=self.guest_id
@@ -255,7 +264,6 @@ class HostelOrchestrator:
         if approved:
 
             if action == "checkout":
-
                 return (
                     "CHECKOUT REQUEST UPDATE\n\n"
                     "Your checkout request has been approved.\n"
@@ -265,7 +273,6 @@ class HostelOrchestrator:
                 )
 
             if action == "food_order":
-
                 return (
                     "FOOD ORDER UPDATE\n\n"
                     "Your food order has been approved.\n"
@@ -277,7 +284,6 @@ class HostelOrchestrator:
             return "Your request has been approved."
 
         if action == "checkout":
-
             return (
                 "CHECKOUT REQUEST UPDATE\n\n"
                 "Your checkout request has been rejected.\n"
@@ -285,7 +291,6 @@ class HostelOrchestrator:
             )
 
         if action == "food_order":
-
             return (
                 "FOOD ORDER UPDATE\n\n"
                 "Your food order has been rejected.\n"
@@ -374,12 +379,15 @@ class HostelOrchestrator:
             "peanut"
         ]
 
+        # Match complete words/phrases, not arbitrary substrings.
         booking_request = any(
-            keyword in text for keyword in booking_keywords
+            self._contains_keyword(text, keyword)
+            for keyword in booking_keywords
         )
 
         kitchen_request = any(
-            keyword in text for keyword in kitchen_keywords
+            self._contains_keyword(text, keyword)
+            for keyword in kitchen_keywords
         )
 
         # -------------------------------------------------
@@ -405,7 +413,8 @@ class HostelOrchestrator:
         ]
 
         checkout_action = any(
-            phrase in text for phrase in checkout_action_words
+            self._contains_keyword(text, phrase)
+            for phrase in checkout_action_words
         )
 
         responses = []
@@ -446,22 +455,24 @@ class HostelOrchestrator:
                 )
 
             try:
+
                 booking_result = await self.booking_agent.ainvoke(
-        {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": booking_instruction
-                }
-            ]
-        },
-        config={"recursion_limit": 12}
-    )
+                    {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": booking_instruction
+                            }
+                        ]
+                    },
+                    config={"recursion_limit": 12}
+                )
 
             except GraphRecursionError:
+
                 response = (
-                    "I couldn't complete your booking request because the "
-                    "specialist reached its execution limit. "
+                    "I couldn't complete your booking request because "
+                    "the specialist reached its execution limit. "
                     "Please try again with a simpler request."
                 )
 
@@ -488,10 +499,8 @@ class HostelOrchestrator:
 
                 if pending_request:
 
-                    registered = (
-                        self.approval_manager.create_request(
-                            pending_request
-                        )
+                    registered = self.approval_manager.create_request(
+                        pending_request
                     )
 
                     self.pending_approval_request_id = (
@@ -587,11 +596,12 @@ class HostelOrchestrator:
                 "i would like to order",
                 "can i have",
                 "please bring",
-                "get me",
+                "get me"
             ]
 
             food_order_request = any(
-                phrase in text for phrase in order_phrases
+                self._contains_keyword(text, phrase)
+                for phrase in order_phrases
             )
 
             selected_item_id = None
@@ -601,7 +611,7 @@ class HostelOrchestrator:
 
                 for item_name, item_id in menu_items.items():
 
-                    if item_name in text:
+                    if self._contains_keyword(text, item_name):
 
                         selected_item_id = item_id
                         selected_item_name = item_name
@@ -650,22 +660,24 @@ class HostelOrchestrator:
                 )
 
             try:
-                        kitchen_result = await self.kitchen_agent.ainvoke(
-            {
-                "messages": [
+
+                kitchen_result = await self.kitchen_agent.ainvoke(
                     {
-                        "role": "user",
-                        "content": kitchen_instruction
-                    }
-                ]
-            },
-            config={"recursion_limit": 12}
-        )
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": kitchen_instruction
+                            }
+                        ]
+                    },
+                    config={"recursion_limit": 12}
+                )
 
             except GraphRecursionError:
+
                 response = (
-                    "I couldn't complete your kitchen request because the "
-                    "specialist reached its execution limit. "
+                    "I couldn't complete your kitchen request because "
+                    "the specialist reached its execution limit. "
                     "Please try again with a simpler request."
                 )
 
@@ -675,7 +687,6 @@ class HostelOrchestrator:
                     ]
                 }
 
-           
             if food_order_request:
 
                 order_results = self._extract_tool_results(
@@ -693,10 +704,8 @@ class HostelOrchestrator:
 
                 if pending_order:
 
-                    registered = (
-                        self.approval_manager.create_request(
-                            pending_order
-                        )
+                    registered = self.approval_manager.create_request(
+                        pending_order
                     )
 
                     self.pending_approval_request_id = (
